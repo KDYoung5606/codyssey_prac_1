@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>영화 티어리스트</title>
+<style>
+  body { font-family: system-ui, "Malgun Gothic", sans-serif; background:#f4f4f6; color:#222; margin:0; padding:20px; }
+  h1 { margin:0 0 12px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  .bar input[type=text] { padding:8px; min-width:200px; }
+  button { padding:8px 14px; cursor:pointer; }
+  .row { display:flex; margin-bottom:6px; background:#fff; border:1px solid #ddd; min-height:136px; }
+  .label { width:80px; flex:none; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:bold; color:#222; }
+  .zone { flex:1; display:flex; flex-wrap:wrap; gap:8px; padding:8px; align-content:flex-start; }
+  .zone.over { background:#e6f0ff; }
+  .card { width:90px; height:120px; border:1px solid #888; border-radius:4px; background:#eee; position:relative; overflow:hidden; cursor:grab; display:flex; align-items:center; justify-content:center; text-align:center; font-size:13px; }
+  .card img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .card .t { position:relative; padding:3px; background:rgba(255,255,255,.85); }
+  .card img + .t { position:absolute; bottom:0; left:0; right:0; }
+  .card .x { position:absolute; top:2px; right:2px; z-index:2; padding:0 6px; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>영화 티어리스트</h1>
+<div class="bar">
+  <input type="text" id="title" placeholder="영화 제목">
+  <input type="file" id="poster" accept="image/*">
+  <button id="add">영화 추가</button>
+  <button id="reset">전체 초기화</button>
+</div>
+<div id="board"></div>
+
+<script>
+const TIERS = [["S","#ff7f7f"],["A","#ffbf7f"],["B","#ffdf7f"],["C","#dfff7f"],["D","#9fe3a0"],["미분류","#cfd2d8"]];
+const KEY = "movieTierA";
+const SAMPLE = ["기생충","올드보이","타이타닉","인터스텔라","라라랜드","어벤져스: 엔드게임","센과 치히로의 행방불명","범죄도시","부산행","쇼생크 탈출"];
+const initial = () => SAMPLE.map((t,i)=>({id:"s"+i,title:t,poster:"",tier:"미분류"}));
+
+let movies;
+try { movies = JSON.parse(localStorage.getItem(KEY)) || initial(); } catch { movies = initial(); }
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(movies)); }
+  catch { alert("저장 공간이 부족해 저장하지 못했습니다. 영화를 일부 삭제해 주세요."); }
+}
+
+function render() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+  for (const [name, color] of TIERS) {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<div class="label" style="background:${color}">${name}</div><div class="zone"></div>`;
+    const zone = row.querySelector(".zone");
+    zone.ondragover = e => { e.preventDefault(); zone.classList.add("over"); };
+    zone.ondragleave = () => zone.classList.remove("over");
+    zone.ondrop = e => {
+      e.preventDefault(); zone.classList.remove("over");
+      const m = movies.find(m => m.id === e.dataTransfer.getData("text/plain"));
+      if (m) { m.tier = name; save(); render(); }
+    };
+    for (const m of movies.filter(m => m.tier === name)) {
+      const c = document.createElement("div"); c.className = "card"; c.draggable = true;
+      c.ondragstart = e => e.dataTransfer.setData("text/plain", m.id);
+      if (m.poster) { const img = document.createElement("img"); img.src = m.poster; c.append(img); }
+      const t = document.createElement("span"); t.className = "t"; t.textContent = m.title; c.append(t);
+      const x = document.createElement("button"); x.className = "x"; x.textContent = "삭제";
+      x.onclick = () => { movies = movies.filter(v => v !== m); save(); render(); };
+      c.append(x);
+      zone.append(c);
+    }
+    board.append(row);
+  }
+}
+
+// 포스터를 작게 줄여 브라우저 저장 용량을 아낀다
+function shrink(file) {
+  return new Promise((ok, fail) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 240 / img.height), c = document.createElement("canvas");
+      c.width = img.width * s; c.height = img.height * s;
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      ok(c.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = () => fail();
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+document.getElementById("add").onclick = async () => {
+  const ti = document.getElementById("title"), pi = document.getElementById("poster");
+  const title = ti.value.trim();
+  if (!title) { alert("영화 제목을 입력해 주세요."); return; }
+  let poster = "";
+  if (pi.files[0]) {
+    try { poster = await shrink(pi.files[0]); } catch { alert("이미지를 읽을 수 없습니다."); return; }
+  }
+  movies.push({ id: "u" + Date.now(), title, poster, tier: "미분류" });
+  ti.value = ""; pi.value = "";
+  save(); render();
+};
+
+document.getElementById("reset").onclick = () => {
+  if (confirm("모든 변경이 사라지고 예시 영화 10편으로 돌아갑니다. 계속할까요?")) {
+    movies = initial(); save(); render();
+  }
+};
+
+render();
+</script>
+</body>
+</html>
